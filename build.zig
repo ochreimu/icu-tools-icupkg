@@ -1,5 +1,8 @@
 const std = @import("std");
 
+const version = std.SemanticVersion.parse("74.0.0") catch unreachable;
+const icudt_name = std.fmt.comptimePrint("icudt{d}", .{version.major});
+
 pub fn build(b: *std.Build) !void {
     const Linkage = std.Build.Step.Compile.Linkage;
 
@@ -7,6 +10,7 @@ pub fn build(b: *std.Build) !void {
     const optimize = b.standardOptimizeOption(.{});
     const linkage = b.option(Linkage, "linkage", "The linking mode for libraries") orelse .static;
     const exe_name = "icupkg";
+    const use_stub = b.option(bool, "useStubData", "Use stub data library") orelse false;
 
     const exe = std.Build.Step.Compile.create(b, .{
         .name = exe_name,
@@ -37,6 +41,12 @@ pub fn build(b: *std.Build) !void {
     const icutu = toolutil.artifact("icutu");
 
     // TODO: To be continued when ICUDT can be compiled. This tool depends on ICUDT.
+    const data = b.dependency(if (use_stub) "stubdata" else "data", .{
+        .target = target,
+        .optimize = optimize,
+        .linkage = linkage,
+    });
+    const icudt = data.artifact(icudt_name);
 
     // HACK This is an ugly hack
     const icuuc_root = common.builder.pathFromRoot("cpp");
@@ -45,11 +55,13 @@ pub fn build(b: *std.Build) !void {
 
     exe.linkLibCpp();
     exe.linkLibrary(icuuc);
-    exe.installLibraryHeaders(icuuc);
     exe.linkLibrary(icui18n);
-    exe.installLibraryHeaders(icui18n);
     exe.linkLibrary(icutu);
+    exe.linkLibrary(icudt);
+    exe.installLibraryHeaders(icuuc);
+    exe.installLibraryHeaders(icui18n);
     exe.installLibraryHeaders(icutu);
+    exe.installLibraryHeaders(icudt);
 
     addSourceFiles(b, exe, &.{ "-fno-exceptions", "-Icpp", "-I", icuuc_root, "-I", icui18n_root, "-I", icutu_root }) catch @panic("OOM");
     b.installArtifact(exe);
